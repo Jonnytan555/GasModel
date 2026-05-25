@@ -57,7 +57,7 @@ if __name__ == "__main__":
     import logger
     logger.setup_log(
         app="gas_forecast",
-        filename=os.path.join(r"C:\Python\DataEngineering\GasModel\logs", "gas_forecast.log"),
+        filename=str(settings.LOG_DIR / "gas_forecast.log"),
         use_stream=True,
     )
     run_forecast(get_engine(), days=7)

@@ -13,14 +13,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+import appsettings as settings
 import logger
 logger.setup_log(
     app="gas_train",
-    filename=os.path.join(r"C:\Python\DataEngineering\GasModel\logs", "gas_train.log"),
+    filename=str(settings.LOG_DIR / "gas_train.log"),
     use_stream=True,
 )
-
-import appsettings as settings
 from db import get_engine
 from models import MODELS
 from models.loader import GasHistoricalLoader

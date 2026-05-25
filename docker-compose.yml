@@ -1,0 +1,169 @@
+# Gas Demand Forecasting — full stack
+#
+# Services:
+#   postgres      Airflow metadata database
+#   airflow-init  One-time Airflow DB migration + admin user creation
+#   airflow-web   Airflow UI  (http://localhost:8080, admin/admin)
+#   airflow-sch   Airflow scheduler — runs gas_pipeline DAG hourly
+#   activemq      ActiveMQ broker  (STOMP :61613, UI :8161)
+#   gas-listener  GasModel listener daemon (auto-forecasts on new data)
+#   gas-dashboard Dash dashboard  (http://localhost:8050)
+#
+# SQL Server: pointed at the host machine via host.docker.internal.
+# If you want SQL Server in Docker too, uncomment the sql-server service below.
+#
+# First-time setup:
+#   docker compose up airflow-init        # run once to create Airflow DB + admin user
+#   docker compose up -d                  # start all services
+#   docker compose run --rm gas-model python train.py   # train models
+#
+# To tune hyperparameters:
+#   docker compose run --rm gas-model python train.py --tune
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: ../../Scrapes/gas
+  environment:
+    &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    DB_HOST: host.docker.internal
+    DB_NAME: GAS_MODEL
+    MQ_HOST: activemq
+    MQ_PORT: "61613"
+    LOG_DIR: /opt/airflow/logs
+  volumes:
+    - ../../Scrapes/gas/dags:/opt/airflow/dags
+    - ../../Scrapes/gas:/opt/airflow/gas
+    - airflow-logs:/opt/airflow/logs
+  depends_on:
+    postgres:
+      condition: service_healthy
+    activemq:
+      condition: service_started
+
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+
+  activemq:
+    image: apache/activemq-classic:5.18.3
+    ports:
+      - "61613:61613"   # STOMP — used by scrapers and GasModel
+      - "8161:8161"     # ActiveMQ web console (admin/admin)
+    environment:
+      ACTIVEMQ_ADMIN_LOGIN: admin
+      ACTIVEMQ_ADMIN_PASSWORD: admin
+
+  # Uncomment to run SQL Server in Docker instead of using host SQL Server:
+  # sql-server:
+  #   image: mcr.microsoft.com/mssql/server:2022-latest
+  #   environment:
+  #     ACCEPT_EULA: Y
+  #     SA_PASSWORD: YourStrong!Passw0rd
+  #   ports:
+  #     - "1433:1433"
+  #   volumes:
+  #     - sql-data:/var/opt/mssql
+
+  # ── Airflow (scraper scheduling) ──────────────────────────────────────────────
+
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create --username admin --password admin
+          --firstname Admin --lastname User --role Admin
+          --email admin@example.com || true
+      "
+    restart: "no"
+
+  airflow-web:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  airflow-sch:
+    <<: *airflow-common
+    command: scheduler
+    restart: unless-stopped
+
+  # ── GasModel ─────────────────────────────────────────────────────────────────
+
+  gas-listener:
+    build: .
+    command: python listener.py
+    environment:
+      DB_HOST: host.docker.internal
+      DB_NAME: GAS_MODEL
+      MQ_HOST: activemq
+      MQ_PORT: "61613"
+      LOG_DIR: /logs
+      MODELS_DIR: /models
+    volumes:
+      - gas-models:/models
+      - gas-logs:/logs
+    depends_on:
+      - activemq
+    restart: unless-stopped
+
+  gas-dashboard:
+    build: .
+    command: python dashboard/app.py
+    ports:
+      - "8050:8050"
+    environment:
+      DB_HOST: host.docker.internal
+      DB_NAME: GAS_MODEL
+      LOG_DIR: /logs
+    volumes:
+      - gas-logs:/logs
+    depends_on:
+      - gas-listener
+    restart: unless-stopped
+
+  # Helper — not started by default. Use for one-off train / forecast runs:
+  #   docker compose run --rm gas-model python train.py
+  #   docker compose run --rm gas-model python train.py --tune
+  #   docker compose run --rm gas-model python forecast.py
+  gas-model:
+    build: .
+    profiles: ["tools"]
+    environment:
+      DB_HOST: host.docker.internal
+      DB_NAME: GAS_MODEL
+      MQ_HOST: activemq
+      MQ_PORT: "61613"
+      LOG_DIR: /logs
+      MODELS_DIR: /models
+    volumes:
+      - gas-models:/models
+      - gas-logs:/logs
+    depends_on:
+      - activemq
+
+volumes:
+  postgres-data:
+  airflow-logs:
+  gas-models:
+  gas-logs:
+  # sql-data:   # uncomment if using SQL Server in Docker

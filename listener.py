@@ -18,13 +18,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+import appsettings as settings
 import logger
 logger.setup_log(
     app="gas_listener",
-    filename=os.path.join(r"C:\Python\DataEngineering\GasModel\logs", "gas_listener.log"),
+    filename=str(settings.LOG_DIR / "gas_listener.log"),
     use_stream=True,
 )
-import appsettings as settings
 from db import get_engine
 from forecast import run_forecast
 

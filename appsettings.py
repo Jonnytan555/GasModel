@@ -19,8 +19,9 @@ MQ_QUEUES_SUBSCRIBE = [
 ]
 MQ_QUEUE_FORECAST = "/queue/gas.forecast"
 
-# ── Model ──────────────────────────────────────────────────────────────────────
-MODELS_DIR           = Path(os.environ.get("MODELS_DIR", r"C:\Temp\GasModel\models"))
+# ── Paths ──────────────────────────────────────────────────────────────────────
+MODELS_DIR = Path(os.environ.get("MODELS_DIR", r"C:\Temp\GasModel\models"))
+LOG_DIR    = Path(os.environ.get("LOG_DIR",    r"C:\Python\DataEngineering\GasModel\logs"))
 BACKFILL_YEARS       = int(os.environ.get("BACKFILL_YEARS", "3"))
 MODEL_VERSIONS_KEEP  = int(os.environ.get("MODEL_VERSIONS_KEEP", "3"))
 
