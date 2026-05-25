@@ -1,8 +1,8 @@
 FROM python:3.11-slim-bookworm
 
-# Microsoft ODBC Driver 17 for SQL Server
+# Microsoft ODBC Driver 17 + libgomp (required by XGBoost/LightGBM on Linux)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl gnupg2 apt-transport-https unixodbc-dev && \
+        curl gnupg2 apt-transport-https unixodbc-dev libgomp1 && \
     curl https://packages.microsoft.com/keys/microsoft.asc \
         | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg && \
     curl https://packages.microsoft.com/config/debian/12/prod.list \
