@@ -78,6 +78,20 @@ An ensemble of independent decision trees, each trained on a random subset of th
 
 **Limitation:** Tends to underperform GBM on structured tabular data but provides useful ensemble diversity.
 
+### Model 4 — LSTM (`lstm`) — requires `torch`
+
+A two-layer Long Short-Term Memory neural network. Instead of being given a single day's features, it receives a 14-day rolling window of feature history. The LSTM's internal state lets it learn temporal patterns — for example, that a cold spell building over 3 days produces a larger demand spike than a single cold day in isolation.
+
+**Good for:** Multi-day weather sequences. A sudden cold snap that lasts 5 days and a single cold day produce the same HDD on day 1 — the LSTM can distinguish them by looking at the trend. This is the pattern that Ridge, GBM, and RF all miss.
+
+**Limitation:** Needs more data to train reliably than the tree models. With only ~1000 rows it may not outperform GBM — but becomes more competitive as data accumulates. Feature importance is not available (returns zeros).
+
+**Install PyTorch to enable:**
+```bash
+pip install torch
+```
+If `torch` is not installed the LSTM is silently skipped — the other three models run normally.
+
 ---
 
 ## How it all connects — the pipeline
@@ -350,6 +364,7 @@ GasModel/
 │   ├── linear.py         Ridge regression model
 │   ├── gbm.py            Gradient boosting model (XGBoost / LightGBM)
 │   ├── rf.py             Random Forest model
+│   ├── lstm.py           LSTM neural network (requires torch)
 │   ├── pipeline.py       TrainPipeline and ForecastPipeline orchestrators
 │   ├── loader.py         DataLoader implementations
 │   ├── evaluator.py      RegressionEvaluator (RMSE, MAE, MAPE)
