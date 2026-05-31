@@ -1,7 +1,16 @@
 import logging
+import warnings
 import numpy as np
 import pandas as pd
 import sqlalchemy as sa
+
+# LightGBM stores feature names internally; suppress the harmless sklearn
+# warning that fires when predict() receives a plain numpy array.
+warnings.filterwarnings(
+    "ignore",
+    message="X does not have valid feature names",
+    category=UserWarning,
+)
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
