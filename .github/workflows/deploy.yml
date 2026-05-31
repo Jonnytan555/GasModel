@@ -1,0 +1,109 @@
+name: Deploy to AWS (prod)
+
+on:
+  push:
+    branches: [main]
+
+# Required for OIDC token (no long-lived AWS credentials stored in GitHub)
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION:   eu-west-2
+  ECR_MODEL:    gas-model
+  ECR_SCRAPER:  gas-scraper
+  ECS_CLUSTER:  gasmodel-prod-cluster
+
+jobs:
+  test:
+    name: Smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest tests/ -v --tb=short
+
+  deploy:
+    name: Build → ECR → ECS
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Authenticate to AWS via OIDC — no long-lived secrets needed
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/gasmodel-prod-github-actions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr-login
+
+      # ── Build + push gas-model image ────────────────────────────────────────
+      - name: Build and push gas-model
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_MODEL:$IMAGE_TAG .
+          docker tag  $REGISTRY/$ECR_MODEL:$IMAGE_TAG $REGISTRY/$ECR_MODEL:latest
+          docker push $REGISTRY/$ECR_MODEL:$IMAGE_TAG
+          docker push $REGISTRY/$ECR_MODEL:latest
+          echo "model_image=$REGISTRY/$ECR_MODEL:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        id: build-model
+
+      # ── Build + push gas-scraper image ──────────────────────────────────────
+      - name: Build and push gas-scraper
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $REGISTRY/$ECR_SCRAPER:$IMAGE_TAG ../../Scrapes/gas || \
+          docker build -t $REGISTRY/$ECR_SCRAPER:$IMAGE_TAG ../../../Scrapes/gas || true
+          # Scraper repo may be separate — push if built successfully
+          if docker image inspect $REGISTRY/$ECR_SCRAPER:$IMAGE_TAG &>/dev/null; then
+            docker tag  $REGISTRY/$ECR_SCRAPER:$IMAGE_TAG $REGISTRY/$ECR_SCRAPER:latest
+            docker push $REGISTRY/$ECR_SCRAPER:$IMAGE_TAG
+            docker push $REGISTRY/$ECR_SCRAPER:latest
+          fi
+
+      # ── Force ECS services to pull the new image ────────────────────────────
+      - name: Deploy listener to ECS
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service gasmodel-prod-listener \
+            --force-new-deployment \
+            --region $AWS_REGION
+
+      - name: Deploy dashboard to ECS
+        run: |
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service gasmodel-prod-dashboard \
+            --force-new-deployment \
+            --region $AWS_REGION
+
+      # ── Wait for services to stabilise ──────────────────────────────────────
+      - name: Wait for listener to stabilise
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services gasmodel-prod-listener \
+            --region $AWS_REGION
+
+      - name: Wait for dashboard to stabilise
+        run: |
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services gasmodel-prod-dashboard \
+            --region $AWS_REGION
+
+      - name: Deployment complete
+        run: echo "Deployed ${{ github.sha }} to production"
