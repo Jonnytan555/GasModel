@@ -220,13 +220,12 @@ class TrainPipeline:
         return result
 
     def _prune_old_versions(self, model_name: str) -> None:
-        versioned = sorted(
-            self.models_dir.glob(f"{model_name}_????????T??????.pkl")
-        )
-        to_delete = versioned[: max(0, len(versioned) - self.versions_to_keep)]
+        from models.storage import list_versioned, delete_model
+        versioned  = list_versioned(self.models_dir, model_name)
+        to_delete  = versioned[: max(0, len(versioned) - self.versions_to_keep)]
         for path in to_delete:
-            path.unlink(missing_ok=True)
-            logging.info("[TrainPipeline] Pruned old version: %s", path.name)
+            delete_model(path)
+            logging.info("[TrainPipeline] Pruned old version: %s", path.split("/")[-1])
 
     def _publish(self, result: dict) -> None:
         if not self.publish_handler:

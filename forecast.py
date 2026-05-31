@@ -19,10 +19,11 @@ from models.pipeline import ForecastPipeline
 
 
 def _load_models() -> list:
+    from models.storage import model_exists
     models = []
     for Model in MODELS:
-        path = settings.MODELS_DIR / f"{Model.name}.pkl"
-        if not path.exists():
+        path = f"{settings.MODELS_DIR}/{Model.name}.pkl"
+        if not model_exists(path):
             logging.warning("[forecast] Model not found: %s — run train.py first", path)
             continue
         models.append(Model.load(path))

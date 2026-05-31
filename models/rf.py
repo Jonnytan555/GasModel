@@ -45,9 +45,10 @@ class RandomForestDemandModel(DemandModel):
         return dict(zip(feature_names, self.model.feature_importances_))
 
     def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(self, path)
+        from models.storage import save_model
+        save_model(self, path)
 
     @classmethod
-    def load(cls, path: Path) -> "RandomForestDemandModel":
-        return joblib.load(path)
+    def load(cls, path: "Path | str") -> "RandomForestDemandModel":
+        from models.storage import load_model
+        return load_model(path)
