@@ -69,6 +69,35 @@ class TrainPipeline:
         logging.info("[TrainPipeline] %s — best CV-RMSE=%.2f  params=%s",
                      self.model.name, cv_rmse, best_params)
 
+    def _cv_evaluate(self, df: pd.DataFrame, feature_cols: list[str], target_col: str) -> tuple[float, float]:
+        """5-fold TimeSeriesSplit CV using the same hyperparams as the final model."""
+        from sklearn.model_selection import TimeSeriesSplit
+
+        X = df[feature_cols].values
+        y = df[target_col].values
+
+        try:
+            current_params = self.model.model.get_params()
+        except AttributeError:
+            current_params = {}
+
+        fold_rmses = []
+        for fold, (train_idx, val_idx) in enumerate(TimeSeriesSplit(n_splits=5).split(X), start=1):
+            fold_model = type(self.model)()
+            if current_params:
+                try:
+                    fold_model.model.set_params(**current_params)
+                except Exception:
+                    pass
+            fold_model.fit(X[train_idx], y[train_idx])
+            preds = fold_model.predict(X[val_idx])
+            rmse  = float(np.sqrt(np.mean((y[val_idx] - preds) ** 2)))
+            fold_rmses.append(rmse)
+            logging.info("[TrainPipeline] %s  CV fold %d — val-RMSE=%.2f  (n=%d)",
+                         self.model.name, fold, rmse, len(val_idx))
+
+        return float(np.mean(fold_rmses)), float(np.std(fold_rmses))
+
     def run(self, feature_cols: list[str], target_col: str, split: float = 0.8) -> dict:
         df = self.loader.load(self.engine)
         df = df.dropna(subset=feature_cols + [target_col]).reset_index(drop=True)
@@ -93,18 +122,36 @@ class TrainPipeline:
 
         self.model.fit(X_train, y_train)
 
+        # Test-set evaluation
         result = self.evaluator.evaluate(
             self.model.name,
             test_df[target_col].values,
             self.model.predict(test_df[feature_cols].values),
         )
 
+        # Train-set evaluation — used to diagnose overfit via the gap
+        train_result = self.evaluator.evaluate(
+            self.model.name, y_train, self.model.predict(X_train)
+        )
+        result["train_rmse_mcm"] = round(train_result["rmse_mcm"], 4)
+
+        gap = result["rmse_mcm"] - train_result["rmse_mcm"]
+        overfit_flag = "  *** possible overfit ***" if gap > result["rmse_mcm"] * 0.5 else ""
+        logging.info("[TrainPipeline] %s  train-RMSE=%.2f  test-RMSE=%.2f  gap=+%.2f%s",
+                     self.model.name, train_result["rmse_mcm"],
+                     result["rmse_mcm"], gap, overfit_flag)
+
+        # 5-fold TimeSeriesSplit CV — most honest generalisation estimate
+        cv_rmse, cv_std = self._cv_evaluate(df, feature_cols, target_col)
+        result["cv_rmse_mcm"] = round(cv_rmse, 4)
+        result["cv_rmse_std"] = round(cv_std, 4)
+        logging.info("[TrainPipeline] %s  CV-RMSE=%.2f ± %.2f (5-fold TimeSeriesSplit)",
+                     self.model.name, cv_rmse, cv_std)
+
         importance = self.model.feature_importance(feature_cols)
         top = sorted(importance.items(), key=lambda x: abs(x[1]), reverse=True)
         logging.info("[TrainPipeline] %s top features: %s", self.model.name,
                      "  ".join(f"{k}={v:.3f}" for k, v in top[:4]))
-        logging.info("[TrainPipeline] %s  RMSE=%.2f  MAE=%.2f  MAPE=%.1f%%",
-                     self.model.name, result["rmse_mcm"], result["mae_mcm"], result["mape_pct"])
 
         ts         = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         versioned  = self.models_dir / f"{self.model.name}_{ts}.pkl"

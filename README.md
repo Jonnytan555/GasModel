@@ -164,14 +164,24 @@ Run this SQL in your `GAS_MODEL` database:
 
 ```sql
 CREATE TABLE [dbo].[ModelEvaluation] (
-    model       NVARCHAR(50),
-    rmse_mcm    FLOAT,
-    mae_mcm     FLOAT,
-    mape_pct    FLOAT,
-    trained_at  NVARCHAR(50),
-    train_rows  INT,
-    test_rows   INT
+    model           NVARCHAR(50),
+    rmse_mcm        FLOAT,
+    mae_mcm         FLOAT,
+    mape_pct        FLOAT,
+    train_rmse_mcm  FLOAT,
+    cv_rmse_mcm     FLOAT,
+    cv_rmse_std     FLOAT,
+    trained_at      NVARCHAR(50),
+    train_rows      INT,
+    test_rows       INT
 );
+```
+
+If you already have this table, run:
+```sql
+ALTER TABLE [dbo].[ModelEvaluation] ADD train_rmse_mcm FLOAT;
+ALTER TABLE [dbo].[ModelEvaluation] ADD cv_rmse_mcm    FLOAT;
+ALTER TABLE [dbo].[ModelEvaluation] ADD cv_rmse_std    FLOAT;
 ```
 
 The other tables (`NationalGasData`, `ECMWFForecast`, `GasForecast`, `ENTSOGUrgentMarketMessages`) are created automatically by the scraper on first run.

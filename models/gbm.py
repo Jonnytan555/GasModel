@@ -25,19 +25,20 @@ class GBMDemandModel(DemandModel):
     def __init__(self):
         if _BACKEND == "xgboost":
             self.model = _Base(
-                n_estimators=300,
+                n_estimators=1000,       # upper bound — early stopping decides true count
                 max_depth=4,
                 learning_rate=0.05,
                 subsample=0.8,
                 colsample_bytree=0.8,
                 reg_alpha=0.1,
                 reg_lambda=1.0,
+                early_stopping_rounds=50,
                 random_state=42,
                 verbosity=0,
             )
         else:
             self.model = _Base(
-                n_estimators=300,
+                n_estimators=1000,
                 max_depth=4,
                 learning_rate=0.05,
                 subsample=0.8,
@@ -49,7 +50,20 @@ class GBMDemandModel(DemandModel):
             )
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> None:
-        self.model.fit(X, y)
+        split = int(len(X) * 0.85)
+        if _BACKEND == "xgboost":
+            self.model.fit(
+                X[:split], y[:split],
+                eval_set=[(X[split:], y[split:])],
+                verbose=False,
+            )
+        else:
+            import lightgbm as lgb
+            self.model.fit(
+                X[:split], y[:split],
+                eval_set=[(X[split:], y[split:])],
+                callbacks=[lgb.early_stopping(50, verbose=False), lgb.log_evaluation(-1)],
+            )
 
     def param_grid(self) -> dict:
         return {

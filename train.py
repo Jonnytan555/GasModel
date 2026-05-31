@@ -50,11 +50,17 @@ if __name__ == "__main__":
         )
         results.append(result)
 
-    logging.info("=" * 54)
-    logging.info("%-12s  %10s  %10s  %8s", "Model", "RMSE (mcm)", "MAE (mcm)", "MAPE (%)")
-    logging.info("-" * 54)
+    logging.info("=" * 80)
+    logging.info("%-12s  %10s  %10s  %10s  %8s  %14s",
+                 "Model", "train-RMSE", "test-RMSE", "gap", "MAPE (%)", "CV-RMSE ± std")
+    logging.info("-" * 80)
     for r in results:
-        logging.info("%-12s  %10.2f  %10.2f  %8.1f",
-                     r["model"], r["rmse_mcm"], r["mae_mcm"], r["mape_pct"])
-    logging.info("=" * 54)
+        gap      = r["rmse_mcm"] - r["train_rmse_mcm"]
+        flag     = "  ***" if gap > r["rmse_mcm"] * 0.5 else ""
+        cv_str   = f"{r['cv_rmse_mcm']:.2f} ± {r['cv_rmse_std']:.2f}"
+        logging.info("%-12s  %10.2f  %10.2f  %+10.2f  %8.1f  %14s%s",
+                     r["model"], r["train_rmse_mcm"], r["rmse_mcm"],
+                     gap, r["mape_pct"], cv_str, flag)
+    logging.info("=" * 80)
+    logging.info("*** = train/test gap > 50%% of test RMSE — possible overfit")
     logging.info("Training complete.")
