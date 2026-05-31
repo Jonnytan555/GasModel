@@ -76,6 +76,17 @@ class GBMDemandModel(DemandModel):
             "reg_lambda":      [0.5, 1.0, 2.0, 5.0],
         }
 
+    def optuna_space(self, trial) -> dict:
+        # n_estimators excluded — early stopping determines true tree count
+        return {
+            "max_depth":        trial.suggest_int("max_depth", 3, 6),
+            "learning_rate":    trial.suggest_float("learning_rate", 0.005, 0.2, log=True),
+            "subsample":        trial.suggest_float("subsample", 0.6, 1.0),
+            "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+            "reg_alpha":        trial.suggest_float("reg_alpha", 1e-3, 2.0, log=True),
+            "reg_lambda":       trial.suggest_float("reg_lambda", 0.1, 5.0, log=True),
+        }
+
     def predict(self, X: np.ndarray) -> np.ndarray:
         return self.model.predict(X)
 

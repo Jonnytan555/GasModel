@@ -13,3 +13,4 @@ dash
 dash-bootstrap-components
 plotly
 torch
+optuna

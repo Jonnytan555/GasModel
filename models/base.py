@@ -24,5 +24,9 @@ class DemandModel(ABC):
     def load(cls, path: Path) -> "DemandModel": ...
 
     def param_grid(self) -> dict | None:
-        """Return hyperparameter search space for RandomizedSearchCV, or None to skip tuning."""
+        """Return hyperparameter search space for RandomizedSearchCV fallback, or None to skip tuning."""
+        return None
+
+    def optuna_space(self, trial) -> dict | None:
+        """Return hyperparameters sampled from an Optuna trial, or None to skip Optuna tuning."""
         return None

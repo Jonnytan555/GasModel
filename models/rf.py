@@ -27,6 +27,14 @@ class RandomForestDemandModel(DemandModel):
             "max_features":    [0.5, 0.7, 1.0, "sqrt"],
         }
 
+    def optuna_space(self, trial) -> dict:
+        return {
+            "n_estimators":     trial.suggest_int("n_estimators", 100, 600),
+            "max_depth":        trial.suggest_int("max_depth", 3, 15),
+            "min_samples_leaf": trial.suggest_int("min_samples_leaf", 2, 20),
+            "max_features":     trial.suggest_float("max_features", 0.3, 1.0),
+        }
+
     def fit(self, X: np.ndarray, y: np.ndarray) -> None:
         self.model.fit(X, y)
 

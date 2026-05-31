@@ -50,19 +50,26 @@ class TrainPipeline:
         self.tune_iterations  = tune_iterations
 
     def _tune(self, X: np.ndarray, y: np.ndarray) -> None:
-        grid = self.model.param_grid()
-        if not grid:
-            logging.info("[TrainPipeline] %s — skipping tune (no param_grid defined)", self.model.name)
+        """Route to Optuna if available, fall back to RandomizedSearchCV."""
+        if not self.model.param_grid():
+            logging.info("[TrainPipeline] %s — skipping tune (no param_grid)", self.model.name)
             return
+        try:
+            import optuna  # noqa: F401
+            self._tune_optuna(X, y)
+        except ImportError:
+            logging.info("[TrainPipeline] Optuna not installed — falling back to RandomizedSearchCV")
+            self._tune_randomized(X, y)
 
+    def _tune_randomized(self, X: np.ndarray, y: np.ndarray) -> None:
         from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 
-        logging.info("[TrainPipeline] %s — tuning with %d iterations x 5-fold TimeSeriesSplit ...",
+        logging.info("[TrainPipeline] %s — RandomizedSearchCV %d iters x 5-fold ...",
                      self.model.name, self.tune_iterations)
 
         search = RandomizedSearchCV(
             self.model.model,
-            grid,
+            self.model.param_grid(),
             n_iter=self.tune_iterations,
             cv=TimeSeriesSplit(n_splits=5),
             scoring="neg_root_mean_squared_error",
@@ -71,12 +78,45 @@ class TrainPipeline:
             refit=False,
         )
         search.fit(X, y)
-
-        best_params = search.best_params_
-        cv_rmse     = -search.best_score_
-        self.model.model.set_params(**best_params)
+        self.model.model.set_params(**search.best_params_)
         logging.info("[TrainPipeline] %s — best CV-RMSE=%.2f  params=%s",
-                     self.model.name, cv_rmse, best_params)
+                     self.model.name, -search.best_score_, search.best_params_)
+
+    def _tune_optuna(self, X: np.ndarray, y: np.ndarray) -> None:
+        import optuna
+        from sklearn.model_selection import TimeSeriesSplit
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        logging.info("[TrainPipeline] %s — Optuna %d trials x 5-fold TimeSeriesSplit ...",
+                     self.model.name, self.tune_iterations)
+
+        tscv = TimeSeriesSplit(n_splits=5)
+
+        def objective(trial: optuna.Trial) -> float:
+            params = self.model.optuna_space(trial)
+            fold_rmses = []
+            for step, (train_idx, val_idx) in enumerate(tscv.split(X)):
+                fold_model = type(self.model)()
+                fold_model.model.set_params(**params)
+                fold_model.fit(X[train_idx], y[train_idx])
+                preds = fold_model.predict(X[val_idx])
+                fold_rmses.append(float(np.sqrt(np.mean((y[val_idx] - preds) ** 2))))
+                # Report progress so Optuna can prune bad trials early
+                trial.report(np.mean(fold_rmses), step)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+            return float(np.mean(fold_rmses))
+
+        sampler = optuna.samplers.TPESampler(seed=42)
+        pruner  = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=2)
+        study   = optuna.create_study(direction="minimize", sampler=sampler, pruner=pruner)
+        study.optimize(objective, n_trials=self.tune_iterations, show_progress_bar=False)
+
+        best = study.best_params
+        self.model.model.set_params(**best)
+        logging.info("[TrainPipeline] %s — Optuna best CV-RMSE=%.2f  params=%s",
+                     self.model.name, study.best_value, best)
 
     def _cv_evaluate(self, df: pd.DataFrame, feature_cols: list[str], target_col: str) -> tuple[float, float]:
         """5-fold TimeSeriesSplit CV using the same hyperparams as the final model."""

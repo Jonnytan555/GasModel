@@ -3,7 +3,11 @@ train.py — Train all registered models on historical data.
 
 Run:
   python train.py           # train with default params
-  python train.py --tune    # tune hyperparameters first (slower, better results)
+  python train.py --tune    # tune hyperparameters (Optuna if installed, else RandomizedSearchCV)
+
+Optuna uses Bayesian optimisation (TPE sampler) with MedianPruner to find better
+hyperparameters than random search in the same number of trials.  Install with:
+  pip install optuna
 """
 
 import os
