@@ -6,10 +6,25 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
-resource "aws_cloudwatch_log_group" "listener"  { name = "/ecs/${local.name_prefix}/listener";  retention_in_days = 30 }
-resource "aws_cloudwatch_log_group" "dashboard" { name = "/ecs/${local.name_prefix}/dashboard"; retention_in_days = 30 }
-resource "aws_cloudwatch_log_group" "train"     { name = "/ecs/${local.name_prefix}/train";     retention_in_days = 30 }
-resource "aws_cloudwatch_log_group" "scraper"   { name = "/ecs/${local.name_prefix}/scraper";   retention_in_days = 30 }
+resource "aws_cloudwatch_log_group" "listener" {
+  name              = "/ecs/${local.name_prefix}/listener"
+  retention_in_days = 30
+}
+
+resource "aws_cloudwatch_log_group" "dashboard" {
+  name              = "/ecs/${local.name_prefix}/dashboard"
+  retention_in_days = 30
+}
+
+resource "aws_cloudwatch_log_group" "train" {
+  name              = "/ecs/${local.name_prefix}/train"
+  retention_in_days = 30
+}
+
+resource "aws_cloudwatch_log_group" "scraper" {
+  name              = "/ecs/${local.name_prefix}/scraper"
+  retention_in_days = 30
+}
 
 locals {
   common_env = [
